@@ -1,0 +1,70 @@
+[package]
+name = "arqfastrestore"
+version = "0.1.0"
+edition = "2024"
+description = "Fast, parallel restore tool for Arq backups (Arq5 and Arq7)"
+license = "MIT"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Crypto (Arq5 + Arq7)
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false }
+rand = "0.8"
+
+# Compression
+lz4_flex = "0.11"
+flate2 = "1"
+zstd = "0.13"
+
+# Parallelism
+rayon = "1"
+
+# Async I/O (for S3/cloud backends later)
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Serialization (plist for Arq5, JSON for Arq7)
+plist = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Persistent tree cache
+redb = "2"
+bitcode = { version = "0.6", features = ["serde"] }
+dirs = "5"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Progress
+indicatif = "0.17"
+
+# Timestamp restoration
+filetime = "0.2"
+
+# Hex encoding
+hex = "0.4"
+
+# Allocator — jemalloc returns freed pages to the OS aggressively,
+# avoiding the glibc arena-growth problem during large scans.
+tikv-jemallocator = "0.6"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = true
