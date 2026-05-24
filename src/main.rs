@@ -18,6 +18,36 @@ mod scan;
 mod storage;
 
 use crypto::{Arq5Keys, Arq7Keys, decrypt_arq5_object, decrypt_arq7_object};
+
+/// Resolve the effective password string from the mutually-exclusive
+/// `--password` / `--password-file` CLI options.
+///
+/// - Both provided → error
+/// - Neither provided → error
+/// - `password` provided → return it as-is
+/// - `password_file` provided → read the file, split by newlines, trim each
+///   line, filter empty lines, join with `","`. Errors if the result is empty.
+fn resolve_password(password: Option<String>, password_file: Option<String>) -> anyhow::Result<String> {
+    match (password, password_file) {
+        (Some(_), Some(_)) => bail!("cannot specify both --password and --password-file"),
+        (None, None) => bail!("one of --password or --password-file is required"),
+        (Some(pw), None) => Ok(pw),
+        (None, Some(path)) => {
+            let content = std::fs::read_to_string(&path)
+                .with_context(|| format!("reading password file {path}"))?;
+            let joined: String = content
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>()
+                .join(",");
+            if joined.is_empty() {
+                bail!("password file {path} contains no non-empty lines");
+            }
+            Ok(joined)
+        }
+    }
+}
 use format::arq5_adapter::{arq5_tree_to_tree, blob_key_to_blob_loc, strip_encrypted_prefix};
 use format::{Arq5Commit, Arq5Tree, BackupRecord, PackIndexDb, list_all_backup_folders, read_arq5_computer_info, read_backup_config};
 use restore::{RestoreEngine, RestoreStats, TreeCache, TreeParseFn};
@@ -40,9 +70,13 @@ enum Commands {
         #[arg(short, long)]
         backup_path: String,
 
-        /// Backup encryption password
+        /// Backup encryption password. Use --password-file to avoid quoting special characters.
         #[arg(short, long, env = "ARQ_PASSWORD")]
-        password: String,
+        password: Option<String>,
+
+        /// Path to a file containing one password per line. Alternative to --password.
+        #[arg(long)]
+        password_file: Option<String>,
     },
     /// Scan all snapshots across all backup folders and emit a CSV of unique files
     Scan {
@@ -57,8 +91,13 @@ enum Commands {
         /// directory found; directories that don't match any password are skipped
         /// with a warning.  Use the ARQ_PASSWORD environment variable to avoid
         /// putting passwords on the command line.
+        /// Use --password-file to specify passwords one per line instead.
         #[arg(short, long, env = "ARQ_PASSWORD")]
-        password: String,
+        password: Option<String>,
+
+        /// Path to a file containing one password per line. Alternative to --password.
+        #[arg(long)]
+        password_file: Option<String>,
 
         /// Comma-separated glob patterns to filter filenames (e.g. "*.mov,*.mp4").
         /// Patterns are case-insensitive and match the filename only, not the full path.
@@ -72,9 +111,13 @@ enum Commands {
         #[arg(short, long)]
         backup_path: String,
 
-        /// Backup encryption password
+        /// Backup encryption password. Use --password-file to avoid quoting special characters.
         #[arg(short, long, env = "ARQ_PASSWORD")]
-        password: String,
+        password: Option<String>,
+
+        /// Path to a file containing one password per line. Alternative to --password.
+        #[arg(long)]
+        password_file: Option<String>,
 
         /// Destination directory for restored files
         #[arg(short, long)]
@@ -126,8 +169,13 @@ enum Commands {
         /// Backup encryption password(s).  Accepts one password or a
         /// comma-separated list.  Each password is tried against every UUID
         /// directory found.
+        /// Use --password-file to specify passwords one per line instead.
         #[arg(short, long, env = "ARQ_PASSWORD")]
-        password: String,
+        password: Option<String>,
+
+        /// Path to a file containing one password per line. Alternative to --password.
+        #[arg(long)]
+        password_file: Option<String>,
 
         /// Destination directory for restored files
         #[arg(short, long)]
@@ -202,7 +250,9 @@ fn main() -> Result<()> {
         Commands::List {
             backup_path,
             password,
+            password_file,
         } => {
+            let password = resolve_password(password, password_file)?;
             let bp = PathBuf::from(&backup_path);
             let fmt = detect_format(&bp, &password)?;
 
@@ -243,8 +293,10 @@ fn main() -> Result<()> {
         Commands::Scan {
             backup_path,
             password,
+            password_file,
             filter,
         } => {
+            let password = resolve_password(password, password_file)?;
             let bp = PathBuf::from(&backup_path);
             let passwords: Vec<&str> = password.split(',').map(str::trim).collect();
 
@@ -367,6 +419,7 @@ fn main() -> Result<()> {
         Commands::Restore {
             backup_path,
             password,
+            password_file,
             dest,
             timestamp,
             threads,
@@ -376,6 +429,7 @@ fn main() -> Result<()> {
             no_cache,
             pack_concurrency,
         } => {
+            let password = resolve_password(password, password_file)?;
             if let Some(n) = threads {
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(n)
@@ -427,12 +481,14 @@ fn main() -> Result<()> {
             csv,
             backup_path,
             password,
+            password_file,
             dest,
             threads,
             dry_run,
             verbose,
             pack_concurrency,
         } => {
+            let password = resolve_password(password, password_file)?;
             if let Some(n) = threads {
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(n)

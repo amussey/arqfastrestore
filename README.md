@@ -14,6 +14,7 @@ Fast, parallel restore tool for [Arq](https://www.arqbackup.com/) backups. Suppo
 - **Scan command** — walks all snapshots across all backup sets, emits a deduplicated CSV for review before restoring
 - **Progress bar** — live progress with ETA during restore (suppressed automatically when not a TTY)
 - **List backups** — inspect available backup records without restoring
+- **Password file** — `--password-file` reads passwords from a file (one per line) to avoid shell quoting issues with special characters
 - **jemalloc** — bounded RSS under heavy allocation workloads
 
 ## Installation
@@ -48,6 +49,8 @@ arqfastrestore scan \
 `--backup-path` can point to a single UUID backup directory or a parent directory
 containing multiple UUID subdirectories — all are discovered and scanned automatically.
 `--password` accepts a comma-separated list; each is tried against each UUID directory.
+
+Use `--password-file /path/to/file` instead of `--password` to avoid quoting special characters. The file should contain one password per line. `--password` and `--password-file` are mutually exclusive.
 
 #### Scan CSV format
 
@@ -106,6 +109,7 @@ arqfastrestore restore \
 |------|-------------|
 | `--backup-path` / `-b` | Path to the Arq backup folder |
 | `--password` / `-p` | Backup encryption password |
+| `--password-file` | Path to a file containing one password per line (alternative to `--password`) |
 | `--dest` / `-d` | Destination directory for restored files |
 | `--timestamp` | Restore a specific snapshot (by Unix timestamp) |
 | `--threads` | Number of parallel worker threads (default: all CPUs) |
@@ -134,10 +138,10 @@ arqfastrestore restore \
   --dest /tmp/restored \
   --timestamp 1700000000
 
-# Scan all backup sets for media files
+# Scan all backup sets for media files (passwords in a file, one per line)
 arqfastrestore scan \
   --backup-path /mnt/backup/ \
-  --password "pass1,pass2" \
+  --password-file /path/to/passwords.txt \
   --filter "*.mov,*.mp4,*.jpg,*.heic" \
   > media_scan.csv
 ```
