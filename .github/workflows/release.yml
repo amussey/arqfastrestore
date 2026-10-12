@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: x86_64-unknown-linux-musl
+
+jobs:
+  build:
+    name: Build static binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Verify binary is static
+        run: |
+          bin="target/$TARGET/release/arqfastrestore"
+          file "$bin"
+          if ldd "$bin" 2>&1 | grep -qv -E 'not a dynamic executable|statically linked'; then
+            echo "binary is dynamically linked" >&2
+            ldd "$bin" >&2
+            exit 1
+          fi
+          "$bin" --help
+
+      - name: Package
+        id: package
+        run: |
+          name="arqfastrestore-${GITHUB_REF_NAME}-${TARGET}"
+          mkdir -p "dist/$name"
+          cp "target/$TARGET/release/arqfastrestore" LICENSE README.md "dist/$name/"
+          strip "dist/$name/arqfastrestore"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
