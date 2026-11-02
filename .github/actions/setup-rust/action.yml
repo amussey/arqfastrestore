@@ -1,0 +1,22 @@
+name: Set up Rust
+description: Install the stable Rust toolchain and, optionally, restore the cargo build cache.
+
+inputs:
+  components:
+    description: Comma-separated toolchain components to install.
+    default: ""
+  cache:
+    description: Whether to restore (and, on master, save) the cargo build cache.
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: ${{ inputs.components }}
+
+    - if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/master' }}
